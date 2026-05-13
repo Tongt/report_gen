@@ -1,0 +1,7 @@
+streamlit
+python-dotenv
+dashscope
+chromadb
+pypdf
+python-docx
+urllib3<2

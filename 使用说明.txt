@@ -1,0 +1,41 @@
+五看五定智能体使用说明（小白版）
+
+第一步：安装 Python
+1) 安装 Python 3.9 及以上版本
+2) Windows 安装时勾选 "Add Python to PATH"
+
+第二步：解压工具包
+1) 把整个 wukan-wuding-agent 文件夹放到本地任意目录
+2) 不要改动子目录结构
+
+第三步：第一次安装
+Mac：双击 "Mac第一次安装.command"
+Windows：双击 "Windows第一次安装.bat"
+
+脚本会自动：
+- 创建 .venv
+- 安装依赖
+
+第四步：启动
+Mac：双击 "Mac启动.command"
+Windows：双击 "Windows启动.bat"
+
+浏览器地址：
+http://localhost:8501
+
+第五步：网页填写 API Key（首次）
+1) 页面会出现 API Key 配置区
+2) 输入 DashScope API Key（密码框）
+3) 点击“测试 API Key 是否可用”
+4) 点击“保存 API Key”
+
+保存后会写入 config/user_settings.json，下次自动读取。
+
+第六步：上传资料并生成报告
+1) 上传资料（pdf/docx/md）
+2) 输入分析对象
+3) 点击生成报告
+
+文件保存位置
+- 上传资料：knowledge_base/raw_uploads/
+- 生成报告：outputs/
