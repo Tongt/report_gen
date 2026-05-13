@@ -43,18 +43,42 @@ def ensure_dirs() -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
-def load_api_key() -> str:
-    dot_env_path = BASE_DIR / ".env"
-    if dot_env_path.exists():
-        load_dotenv(dotenv_path=dot_env_path, override=False)
-
-    env_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-    invalid_placeholders = {
+def _invalid_api_key_placeholders() -> set[str]:
+    return {
         "请在这里填写你的Qwen API Key",
         "请填写你的Qwen API Key",
         "your_api_key",
         "YOUR_API_KEY",
     }
+
+
+def _api_key_from_streamlit_secrets() -> str:
+    """Streamlit Community Cloud：在应用设置里配置 Secrets（DASHSCOPE_API_KEY）。"""
+    try:
+        import streamlit as st
+
+        secrets = getattr(st, "secrets", None)
+        if secrets is None:
+            return ""
+        if "DASHSCOPE_API_KEY" in secrets:
+            return str(secrets["DASHSCOPE_API_KEY"] or "").strip()
+        return ""
+    except Exception:
+        return ""
+
+
+def load_api_key() -> str:
+    invalid_placeholders = _invalid_api_key_placeholders()
+
+    secret_key = _api_key_from_streamlit_secrets()
+    if secret_key and secret_key not in invalid_placeholders:
+        return secret_key
+
+    dot_env_path = BASE_DIR / ".env"
+    if dot_env_path.exists():
+        load_dotenv(dotenv_path=dot_env_path, override=False)
+
+    env_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
     if env_key in invalid_placeholders:
         env_key = ""
     if env_key:

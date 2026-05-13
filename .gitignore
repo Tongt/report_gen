@@ -2,3 +2,4 @@ config/user_settings.json
 .env
 .venv/
 __pycache__/
+.streamlit/secrets.toml

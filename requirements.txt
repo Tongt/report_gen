@@ -1,6 +1,8 @@
 streamlit
 python-dotenv
 dashscope
+# Avoid "Descriptors cannot be created directly" with chromadb/grpc/protobuf stack.
+protobuf>=3.20.3,<4.21
 chromadb
 pypdf
 python-docx
