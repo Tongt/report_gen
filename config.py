@@ -52,27 +52,21 @@ def _invalid_api_key_placeholders() -> set[str]:
     }
 
 
-def _api_key_from_streamlit_secrets() -> str:
-    """Streamlit Community Cloud：在应用设置里配置 Secrets（DASHSCOPE_API_KEY）。"""
-    try:
-        import streamlit as st
-
-        secrets = getattr(st, "secrets", None)
-        if secrets is None:
-            return ""
-        if "DASHSCOPE_API_KEY" in secrets:
-            return str(secrets["DASHSCOPE_API_KEY"] or "").strip()
-        return ""
-    except Exception:
-        return ""
-
-
 def load_api_key() -> str:
+    """解析顺序：页面保存的 user_settings → 环境变量（含 .env）。
+
+    不从 Streamlit Deploy Secrets 读取 DASHSCOPE_API_KEY，以便每位使用者填写自己的 Key。
+    """
     invalid_placeholders = _invalid_api_key_placeholders()
 
-    secret_key = _api_key_from_streamlit_secrets()
-    if secret_key and secret_key not in invalid_placeholders:
-        return secret_key
+    if USER_SETTINGS_PATH.exists():
+        try:
+            payload = json.loads(USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+            user_key = str(payload.get("dashscope_api_key", "")).strip()
+            if user_key and user_key not in invalid_placeholders:
+                return user_key
+        except Exception:
+            pass
 
     dot_env_path = BASE_DIR / ".env"
     if dot_env_path.exists():
@@ -84,12 +78,6 @@ def load_api_key() -> str:
     if env_key:
         return env_key
 
-    if USER_SETTINGS_PATH.exists():
-        try:
-            payload = json.loads(USER_SETTINGS_PATH.read_text(encoding="utf-8"))
-            return str(payload.get("dashscope_api_key", "")).strip()
-        except Exception:
-            return ""
     return ""
 
 
@@ -97,6 +85,11 @@ def save_user_api_key(api_key: str) -> None:
     ensure_dirs()
     payload = {"dashscope_api_key": api_key.strip()}
     USER_SETTINGS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def clear_saved_api_key() -> None:
+    if USER_SETTINGS_PATH.exists():
+        USER_SETTINGS_PATH.unlink()
 
 
 def mask_api_key(api_key: str) -> str:

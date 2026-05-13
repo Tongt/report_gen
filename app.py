@@ -12,6 +12,7 @@ from config import (
     OUTPUTS_DIR,
     RAW_UPLOADS_DIR,
     SKILLS_DIR,
+    clear_saved_api_key,
     ensure_dirs,
     load_api_key,
     mask_api_key,
@@ -127,7 +128,7 @@ if not effective_api_key:
                 st.error(message)
     st.stop()
 else:
-    st.caption(f"当前 API Key：`{mask_api_key(effective_api_key)}`")
+    st.caption(f"当前 API Key：`{mask_api_key(effective_api_key)}`（来自页面保存或本机环境变量）")
 
 try:
     st.session_state.kb = st.session_state.kb or _build_kb(effective_api_key)
@@ -141,6 +142,26 @@ skill_names = list(skill_map.keys())
 template_names = list(template_map.keys())
 
 with st.sidebar:
+    with st.expander("API Key"):
+        st.caption("请使用您自己的 DashScope Key。更换 Key 后会重建知识库连接。")
+        new_key = st.text_input("新的 API Key", type="password", value="", key="sidebar_new_api_key")
+        c1, c2 = st.columns(2)
+        if c1.button("保存新 Key", use_container_width=True):
+            if not new_key.strip():
+                st.error("不能为空。")
+            else:
+                save_user_api_key(new_key.strip())
+                st.session_state.kb = None
+                st.session_state.bootstrap_done = False
+                st.success("已保存。")
+                st.rerun()
+        if c2.button("清除已保存", use_container_width=True):
+            clear_saved_api_key()
+            st.session_state.kb = None
+            st.session_state.bootstrap_done = False
+            st.info("已清除页面保存的 Key。")
+            st.rerun()
+
     st.subheader("技能与模板")
     default_skills = [name for name in ["五看五定.skill.md", "公文写作规范.skill.md"] if name in skill_names]
     selected_skills = st.multiselect(

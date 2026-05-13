@@ -1,41 +1,23 @@
-五看五定智能体使用说明（小白版）
+五看五定智能体使用说明
 
-第一步：安装 Python
-1) 安装 Python 3.9 及以上版本
-2) Windows 安装时勾选 "Add Python to PATH"
+========== 方式一：在线（Streamlit Cloud）==========
+1) 打开应用链接。
+2) 在页面填写「你自己的」DashScope API Key 并保存；侧栏「API Key」可更换。不会在 Streamlit Secrets 里读共享 Key。
+3) 上传资料、生成报告。注意：云上存储可能不持久，重启后可能要重新填 Key、重新上传。
 
-第二步：解压工具包
-1) 把整个 wukan-wuding-agent 文件夹放到本地任意目录
-2) 不要改动子目录结构
+========== 方式二：本地运行 ==========
+1) 安装 Python 3.9+（建议 3.11）。
+2) 终端进入项目目录：
+   python3 -m venv .venv
+   macOS/Linux: source .venv/bin/activate
+   Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+3) 启动：
+   streamlit run app.py
+4) 浏览器打开 http://localhost:8501（以终端提示为准）。
+5) 首次使用在网页填写并保存 DashScope API Key，或在本项目根目录用 .env 配置 DASHSCOPE_API_KEY（参考 .env.example）。
 
-第三步：第一次安装
-Mac：双击 "Mac第一次安装.command"
-Windows：双击 "Windows第一次安装.bat"
-
-脚本会自动：
-- 创建 .venv
-- 安装依赖
-
-第四步：启动
-Mac：双击 "Mac启动.command"
-Windows：双击 "Windows启动.bat"
-
-浏览器地址：
-http://localhost:8501
-
-第五步：网页填写 API Key（首次）
-1) 页面会出现 API Key 配置区
-2) 输入 DashScope API Key（密码框）
-3) 点击“测试 API Key 是否可用”
-4) 点击“保存 API Key”
-
-保存后会写入 config/user_settings.json，下次自动读取。
-
-第六步：上传资料并生成报告
-1) 上传资料（pdf/docx/md）
-2) 输入分析对象
-3) 点击生成报告
-
-文件保存位置
-- 上传资料：knowledge_base/raw_uploads/
-- 生成报告：outputs/
+========== 文件位置（本地）==========
+上传资料：knowledge_base/raw_uploads/
+生成报告：outputs/
+向量库：knowledge_base/chroma_db/

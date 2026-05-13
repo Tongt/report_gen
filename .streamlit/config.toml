@@ -1,0 +1,11 @@
+# Streamlit Cloud 与本地 `streamlit run` 共用。云端由平台注入端口，无需在此写死。
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+# 与默认浅色一致时可留空；按需可改成 "dark"
+base = "light"
