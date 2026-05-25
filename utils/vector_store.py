@@ -135,12 +135,13 @@ class ChromaKnowledgeBase:
                 ],
             )
 
-    def query(self, query_text: str, n_results: int = 6, where: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        vectors = self.embed_texts([query_text])
-        if not vectors:
-            warnings.warn("Query embedding failed; return empty search result.", RuntimeWarning)
-            return []
-        vector = vectors[0]
+    def query_by_vector(
+        self,
+        vector: list[float],
+        n_results: int = 6,
+        where: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """使用已算好的查询向量检索 Chroma（不再调用 Embedding API）。"""
         query_kwargs: dict[str, Any] = {
             "query_embeddings": [vector],
             "n_results": n_results,
@@ -159,12 +160,19 @@ class ChromaKnowledgeBase:
                 {
                     "id": row_id,
                     "content": doc,
-                    "file_name": metadata.get("file_name", "未知来源"),
-                    "source_path": metadata.get("source_path", ""),
+                    "file_name": (metadata or {}).get("file_name", "未知来源"),
+                    "source_path": (metadata or {}).get("source_path", ""),
                     "distance": distance,
                 }
             )
         return rows
+
+    def query(self, query_text: str, n_results: int = 6, where: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        vectors = self.embed_texts([query_text])
+        if not vectors:
+            warnings.warn("Query embedding failed; return empty search result.", RuntimeWarning)
+            return []
+        return self.query_by_vector(vectors[0], n_results=n_results, where=where)
 
     def list_indexed_files(self) -> list[str]:
         total = self.count()

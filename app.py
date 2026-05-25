@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -7,17 +8,16 @@ import dashscope
 import streamlit as st
 
 from config import (
-    CHROMA_DIR,
     COLLECTION_NAME,
-    OUTPUTS_DIR,
-    RAW_UPLOADS_DIR,
     SKILLS_DIR,
     clear_saved_api_key,
     ensure_dirs,
+    is_per_visitor_disk_isolation_enabled,
     load_api_key,
+    load_settings,
     mask_api_key,
     save_user_api_key,
-    load_settings,
+    storage_paths_for_visitor_session,
 )
 from utils.indexer import delete_file, index_new_files, list_saved_files, rebuild_all
 from utils.loader import (
@@ -79,19 +79,19 @@ def _build_selected_skills_text(selected_skill_names: list[str], skill_map: dict
     return "\n\n".join(sections).strip()
 
 
-def _build_kb(api_key: str) -> ChromaKnowledgeBase:
+def _build_kb(api_key: str, chroma_dir: Path) -> ChromaKnowledgeBase:
     settings = load_settings()
     return ChromaKnowledgeBase(
-        persist_dir=str(CHROMA_DIR),
+        persist_dir=str(chroma_dir),
         collection_name=COLLECTION_NAME,
         api_key=api_key,
         embedding_model=settings["embedding_model"],
     )
 
 
-def _save_report(content: str) -> Path:
-    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUTS_DIR / f"五看五定报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+def _save_report(content: str, outputs_dir: Path) -> Path:
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    out_path = outputs_dir / f"五看五定报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
     out_path.write_text(content, encoding="utf-8")
     return out_path
 
@@ -103,8 +103,39 @@ st.caption("知识库资料（事实）+ Skills（规则）+ 模板（结构） 
 
 _init_state()
 
-settings = load_settings()
-effective_api_key = load_api_key().strip()
+
+def _secrets_get(key: str) -> object:
+    try:
+        return st.secrets[key]
+    except Exception:
+        return ""
+
+
+per_visitor_disk = is_per_visitor_disk_isolation_enabled(streamlit_secrets_get=_secrets_get)
+
+if per_visitor_disk:
+    st.session_state.setdefault("dashscope_api_key", "")
+    if "visitor_storage_id" not in st.session_state:
+        st.session_state.visitor_storage_id = str(uuid.uuid4())
+    visitor_sid: str | None = st.session_state.visitor_storage_id
+else:
+    visitor_sid = None
+
+kb_scan_root, raw_uploads_dir, chroma_dir, outputs_dir = storage_paths_for_visitor_session(visitor_sid)
+for _p in (kb_scan_root, raw_uploads_dir, chroma_dir, outputs_dir):
+    _p.mkdir(parents=True, exist_ok=True)
+
+if per_visitor_disk:
+    effective_api_key = st.session_state["dashscope_api_key"].strip()
+else:
+    effective_api_key = load_api_key().strip()
+
+if per_visitor_disk and not st.session_state.get("_visitor_isolation_hint_shown"):
+    st.info(
+        "当前为**访客隔离模式**（常见于 Streamlit Cloud）：每位访问者拥有独立的 API Key、"
+        "上传资料与向量库，互不可见。刷新或关闭标签后可能分配新空间。"
+    )
+    st.session_state._visitor_isolation_hint_shown = True
 
 if not effective_api_key:
     st.warning("首次使用，请填写 Qwen API Key")
@@ -114,8 +145,12 @@ if not effective_api_key:
         if not input_key.strip():
             st.error("API Key 不能为空。")
         else:
-            save_user_api_key(input_key.strip())
-            st.success("API Key 已保存，下次启动自动读取。")
+            if per_visitor_disk:
+                st.session_state["dashscope_api_key"] = input_key.strip()
+                st.success("API Key 已保存在当前浏览器会话，不会写入共享文件。")
+            else:
+                save_user_api_key(input_key.strip())
+                st.success("API Key 已保存，下次启动自动读取。")
             st.rerun()
     if col_test.button("测试 API Key 是否可用", use_container_width=True):
         if not input_key.strip():
@@ -128,10 +163,11 @@ if not effective_api_key:
                 st.error(message)
     st.stop()
 else:
-    st.caption(f"当前 API Key：`{mask_api_key(effective_api_key)}`（来自页面保存或本机环境变量）")
+    key_src = "当前浏览器会话（访客隔离）" if per_visitor_disk else "页面保存或本机环境变量"
+    st.caption(f"当前 API Key：`{mask_api_key(effective_api_key)}`（{key_src}）")
 
 try:
-    st.session_state.kb = st.session_state.kb or _build_kb(effective_api_key)
+    st.session_state.kb = st.session_state.kb or _build_kb(effective_api_key, chroma_dir)
 except Exception as exc:  # pragma: no cover - runtime guard
     st.error(f"初始化失败：{exc}")
     st.stop()
@@ -143,23 +179,32 @@ template_names = list(template_map.keys())
 
 with st.sidebar:
     with st.expander("API Key"):
-        st.caption("请使用您自己的 DashScope Key。更换 Key 后会重建知识库连接。")
+        st.caption(
+            "请使用您自己的 DashScope Key。更换 Key 后会重建知识库连接。"
+            + (" 访客隔离模式下 Key 仅存在当前浏览器会话。" if per_visitor_disk else "")
+        )
         new_key = st.text_input("新的 API Key", type="password", value="", key="sidebar_new_api_key")
         c1, c2 = st.columns(2)
         if c1.button("保存新 Key", use_container_width=True):
             if not new_key.strip():
                 st.error("不能为空。")
             else:
-                save_user_api_key(new_key.strip())
+                if per_visitor_disk:
+                    st.session_state["dashscope_api_key"] = new_key.strip()
+                else:
+                    save_user_api_key(new_key.strip())
                 st.session_state.kb = None
                 st.session_state.bootstrap_done = False
                 st.success("已保存。")
                 st.rerun()
         if c2.button("清除已保存", use_container_width=True):
-            clear_saved_api_key()
+            if per_visitor_disk:
+                st.session_state["dashscope_api_key"] = ""
+            else:
+                clear_saved_api_key()
             st.session_state.kb = None
             st.session_state.bootstrap_done = False
-            st.info("已清除页面保存的 Key。")
+            st.info("已清除 API Key。")
             st.rerun()
 
     st.subheader("技能与模板")
@@ -170,27 +215,29 @@ with st.sidebar:
         default=default_skills,
     )
     template_options = ["不使用模板"] + template_names
-    selected_template_name = st.radio("选择报告模板", options=template_options, index=0)
+    default_tpl = "五看五定报告模板.md"
+    template_default_idx = template_options.index(default_tpl) if default_tpl in template_options else 0
+    selected_template_name = st.radio("选择报告模板", options=template_options, index=template_default_idx)
     selected_template_text = "" if selected_template_name == "不使用模板" else template_map.get(selected_template_name, "")
 
     st.subheader("知识库资料")
-    kb_paths = list_knowledge_base_files()
+    kb_paths = list_knowledge_base_files(base_dir=kb_scan_root)
     if not kb_paths:
-        st.caption("knowledge_base 下暂无可用资料。")
+        st.caption("当前工作区下暂无可用资料。")
     else:
         for path in kb_paths:
             st.caption(path.name)
 
 if not st.session_state.bootstrap_done:
-    saved = list_saved_files()
+    saved = list_saved_files(kb_scan_root)
     if saved and st.session_state.kb.count() == 0:
-        stats = rebuild_all(st.session_state.kb)
+        stats = rebuild_all(st.session_state.kb, kb_scan_root)
         st.info(
             f"检测到历史资料，已自动重建索引：{stats['files']}个文件，"
             f"{stats['parsed_files']}个解析成功，{stats['chunks']}个分片。"
         )
     else:
-        stats = index_new_files(st.session_state.kb)
+        stats = index_new_files(st.session_state.kb, kb_scan_root)
         if stats["new_files"] > 0:
             st.info(
                 f"已自动补齐新增历史资料索引：{stats['new_files']}个文件，"
@@ -209,10 +256,10 @@ if st.button("上传并增量入库", use_container_width=True):
     if not uploaded_files:
         st.warning("请先选择文件。")
     else:
-        new_paths = save_uploaded_files(uploaded_files, RAW_UPLOADS_DIR)
+        new_paths = save_uploaded_files(uploaded_files, raw_uploads_dir)
         if not new_paths:
             st.info("文件已存在，未新增。")
-        stats = index_new_files(st.session_state.kb)
+        stats = index_new_files(st.session_state.kb, kb_scan_root)
         st.success(
             f"处理完成：新增保存{len(new_paths)}个文件，"
             f"新增索引{stats['new_files']}个文件，{stats['chunks']}个分片。"
@@ -222,7 +269,7 @@ if st.button("上传并增量入库", use_container_width=True):
 st.caption(f"当前知识库分片数量：{st.session_state.kb.count()}")
 
 st.subheader("知识库管理")
-saved_files = list_saved_files()
+saved_files = list_saved_files(kb_scan_root)
 indexed_files = st.session_state.kb.list_indexed_files()
 st.write(f"当前资料数：{len(saved_files)}")
 st.write(f"当前解析数：{len(indexed_files)}")
@@ -230,7 +277,7 @@ st.write(f"当前向量分片数：{st.session_state.kb.count()}")
 
 col_rebuild, col_clear = st.columns(2)
 if col_rebuild.button("重新解析全部资料", use_container_width=True):
-    stats = rebuild_all(st.session_state.kb)
+    stats = rebuild_all(st.session_state.kb, kb_scan_root)
     st.success(
         f"已重建：扫描{stats['files']}个文件，"
         f"解析成功{stats['parsed_files']}个，生成{stats['chunks']}个分片。"
@@ -250,7 +297,7 @@ else:
         col_name, col_del = st.columns([5, 1])
         col_name.write(file_name)
         if col_del.button("删除", key=f"delete_{file_name}"):
-            ok = delete_file(st.session_state.kb, file_name)
+            ok = delete_file(st.session_state.kb, file_name, kb_scan_root)
             if ok:
                 st.success(f"已删除资料并同步删除向量：{file_name}")
             else:
@@ -313,7 +360,7 @@ if st.button("生成五看五定报告", type="primary", use_container_width=Tru
             )
             report_md = clean_generated_report(report_md)
             st.session_state.report_markdown = report_md
-            out_path = _save_report(report_md)
+            out_path = _save_report(report_md, outputs_dir)
             st.session_state.last_output_path = str(out_path)
             st.success("报告生成完成。")
         except Exception as exc:  # pragma: no cover - runtime guard

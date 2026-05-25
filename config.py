@@ -14,6 +14,8 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 OUTPUTS_DIR = BASE_DIR / "outputs"
 CHROMA_DIR = KB_DIR / "chroma_db"
 RAW_UPLOADS_DIR = KB_DIR / "raw_uploads"
+# Streamlit 等多访客共用磁盘时：每浏览器会话一层子目录，避免互相看见 Key / 向量 / 上传文件
+SESSIONS_ROOT = KB_DIR / "sessions"
 CONFIG_DIR = BASE_DIR / "config"
 USER_SETTINGS_PATH = CONFIG_DIR / "user_settings.json"
 
@@ -39,8 +41,78 @@ FIVE_DECISIONS = [
 
 
 def ensure_dirs() -> None:
-    for path in [KB_DIR, SKILLS_DIR, TEMPLATES_DIR, OUTPUTS_DIR, CHROMA_DIR, RAW_UPLOADS_DIR, CONFIG_DIR]:
+    for path in [
+        KB_DIR,
+        SKILLS_DIR,
+        TEMPLATES_DIR,
+        OUTPUTS_DIR,
+        CHROMA_DIR,
+        RAW_UPLOADS_DIR,
+        SESSIONS_ROOT,
+        CONFIG_DIR,
+    ]:
         path.mkdir(parents=True, exist_ok=True)
+
+
+def storage_paths_for_visitor_session(visitor_session_id: str | None) -> tuple[Path, Path, Path, Path]:
+    """返回 (知识库扫描根目录, 上传目录, Chroma 目录, 报告输出目录)。
+
+    visitor_session_id 为 None 时沿用单机布局（knowledge_base 根下的 raw_uploads / chroma_db）。
+    """
+    if not visitor_session_id:
+        return KB_DIR, RAW_UPLOADS_DIR, CHROMA_DIR, OUTPUTS_DIR
+    root = SESSIONS_ROOT / visitor_session_id
+    raw = root / "raw_uploads"
+    chroma = root / "chroma_db"
+    out = OUTPUTS_DIR / "sessions" / visitor_session_id
+    return root, raw, chroma, out
+
+
+def is_per_visitor_disk_isolation_enabled(
+    *,
+    streamlit_secrets_get: object | None = None,
+) -> bool:
+    """是否在磁盘上为每位访客单独分目录（Streamlit Community Cloud 等多用户共盘场景）。
+
+    显式打开：环境变量或 Streamlit Secrets 中 ``WUKAN_MULTI_TENANT=1``/``true``。
+    显式关闭（强制共用旧布局）：``WUKAN_SINGLE_TENANT=1``。
+    否则：用常见 Cloud 特征做启发式判断（不保证覆盖所有托管商，可用手动开关兜底）。
+    """
+    opt_out = os.getenv("WUKAN_SINGLE_TENANT", "").strip().lower() in ("1", "true", "yes")
+    if opt_out:
+        return False
+
+    opt_in = os.getenv("WUKAN_MULTI_TENANT", "").strip().lower() in ("1", "true", "yes")
+    if opt_in:
+        return True
+
+    if streamlit_secrets_get is not None:
+        try:
+            st_val = streamlit_secrets_get("WUKAN_MULTI_TENANT")
+            if str(st_val).strip().lower() in ("1", "true", "yes"):
+                return True
+            if str(st_val).strip().lower() in ("0", "false", "no"):
+                return False
+        except Exception:
+            pass
+        try:
+            st_single = streamlit_secrets_get("WUKAN_SINGLE_TENANT")
+            if str(st_single).strip().lower() in ("1", "true", "yes"):
+                return False
+        except Exception:
+            pass
+
+    if os.getenv("STREAMLIT_SHARING_MODE", "").strip() == "streamlit-community-cloud":
+        return True
+    if os.getenv("STREAMLIT_CLOUD", "").strip() == "1":
+        return True
+    hostname = (os.getenv("HOSTNAME") or os.getenv("COMPUTERNAME") or "").lower()
+    if hostname.endswith(".streamlit.app"):
+        return True
+    # 历史容器镜像里常见（可能随平台变更；若未命中请用 Secrets 显式写 WUKAN_MULTI_TENANT）
+    if os.getenv("HOME", "").rstrip("/") == "/home/appuser":
+        return True
+    return False
 
 
 def _invalid_api_key_placeholders() -> set[str]:

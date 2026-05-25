@@ -5,3 +5,5 @@ config/user_settings.json
 __pycache__/
 .streamlit/secrets.toml
 !.streamlit/secrets.toml.example
+knowledge_base/sessions/
+outputs/sessions/

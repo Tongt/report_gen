@@ -18,7 +18,7 @@ class LoadedDocument:
 
 
 KB_FACT_EXTENSIONS = {".pdf", ".docx", ".md"}
-EXCLUDED_DIR_NAMES = {"skills", "templates", "prompts", "chroma_db", "__pycache__"}
+EXCLUDED_DIR_NAMES = {"skills", "templates", "prompts", "chroma_db", "__pycache__", "sessions"}
 EXCLUDED_FILE_NAMES = {"README.md", "requirements.txt", ".env", "app.py"}
 
 

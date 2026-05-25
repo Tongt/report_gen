@@ -23,10 +23,17 @@ def retrieve_for_five_looks(
     indexed_files = kb.list_indexed_files()
     for look in FIVE_LOOKS:
         query = f"围绕{target_object}，重点检索：{look}。请关注：{LOOK_QUERY_HINTS[look]}"
-        global_rows = kb.query(query_text=query, n_results=max(n_results, 12))
+        # 同一「看」内全局检索与按文件过滤共用一次 query 向量，避免对每份文件重复调用 Embedding API
+        query_vecs = kb.embed_texts([query])
+        if not query_vecs:
+            output[look] = []
+            continue
+        qemb = query_vecs[0]
+
+        global_rows = kb.query_by_vector(qemb, n_results=max(n_results, 12))
         coverage_rows: list[dict] = []
         for file_name in indexed_files:
-            per_file = kb.query(query_text=query, n_results=1, where={"file_name": file_name})
+            per_file = kb.query_by_vector(qemb, n_results=1, where={"file_name": file_name})
             if per_file:
                 coverage_rows.extend(per_file)
 
