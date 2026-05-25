@@ -130,13 +130,6 @@ if per_visitor_disk:
 else:
     effective_api_key = load_api_key().strip()
 
-if per_visitor_disk and not st.session_state.get("_visitor_isolation_hint_shown"):
-    st.info(
-        "当前为**访客隔离模式**（常见于 Streamlit Cloud）：每位访问者拥有独立的 API Key、"
-        "上传资料与向量库，互不可见。刷新或关闭标签后可能分配新空间。"
-    )
-    st.session_state._visitor_isolation_hint_shown = True
-
 if not effective_api_key:
     st.warning("首次使用，请填写 Qwen API Key")
     input_key = st.text_input("请输入 DashScope API Key", type="password", value="")
